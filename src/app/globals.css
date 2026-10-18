@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
 
 :root {
   --background: #ffffff;
@@ -23,4 +24,45 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Styled Formula Cards */
+.markdown-content p:has(.katex-display) {
+  background-color: rgba(30, 41, 59, 0.7);
+  border: 1px solid rgba(51, 65, 85, 0.8);
+  border-left: 4px solid #3b82f6;
+  border-radius: 0.75rem;
+  padding: 1.25rem 1rem;
+  margin: 1.5rem 0;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+}
+
+/* Clean code blocks and ASCII diagram boxes */
+.markdown-content pre {
+  background-color: #0f172a !important;
+  border: 1px solid #334155;
+  border-radius: 0.75rem;
+  padding: 1rem;
+  overflow-x: auto;
+  margin: 1.25rem 0;
+}
+
+.markdown-content code {
+  color: #38bdf8;
+  font-family: monospace;
+  font-size: 0.9em;
+}
+
+.markdown-content pre code {
+  color: #e2e8f0;
+  background-color: transparent !important;
+  padding: 0;
+}
+
+/* Center KaTeX display equations nicely */
+.katex-display {
+  margin: 0 !important;
+  text-align: center;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
