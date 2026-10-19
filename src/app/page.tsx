@@ -290,9 +290,20 @@ export default function Home() {
             )}
           </div>
 
-          {/* Lesson Tab */}
+          {/* Lesson Tab (With Fixed Typography & Code Block Wrapping) */}
           {activeTab === 'lesson' && explanation && (
-            <div className="markdown-content bg-slate-800/80 border border-slate-700/80 p-8 md:p-12 rounded-2xl shadow-xl max-w-none">
+            <div className="bg-slate-800/80 border border-slate-700/80 p-8 md:p-12 rounded-2xl shadow-xl prose prose-invert prose-slate max-w-none 
+              prose-headings:text-blue-400 prose-headings:font-bold prose-headings:tracking-tight 
+              prose-h1:text-2xl prose-h1:border-b prose-h1:border-slate-700 prose-h1:pb-3
+              prose-h2:text-xl prose-h2:mt-8 prose-h2:mb-4 prose-h2:text-slate-100
+              prose-h3:text-lg prose-h3:text-blue-300
+              prose-p:text-slate-300 prose-p:leading-relaxed prose-p:my-3
+              prose-strong:text-white prose-strong:font-semibold
+              prose-ul:my-4 prose-ul:list-disc prose-ul:pl-6
+              prose-li:text-slate-300 prose-li:my-1
+              prose-hr:border-slate-700 prose-hr:my-8
+              prose-pre:bg-slate-950 prose-pre:border prose-pre:border-slate-700 prose-pre:rounded-xl prose-pre:overflow-x-auto
+              prose-code:bg-slate-900 prose-code:text-blue-300 prose-code:px-2 prose-code:py-0.5 prose-code:rounded-md prose-code:before:content-none prose-code:after:content-none">
               <ReactMarkdown 
                 remarkPlugins={[remarkMath]} 
                 rehypePlugins={[rehypeKatex]}
@@ -302,7 +313,7 @@ export default function Home() {
             </div>
           )}
 
-          {/* Current Flashcards Tab (With LaTeX Math Support) */}
+          {/* Current Flashcards Tab */}
           {activeTab === 'flashcards' && explanation && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {flashcards.map((card, idx) => (
@@ -352,7 +363,7 @@ export default function Home() {
                       className={`max-w-[80%] p-4 rounded-2xl text-sm leading-relaxed ${
                         msg.role === 'user'
                           ? 'bg-blue-600 text-white rounded-br-none'
-                          : 'bg-slate-700 text-slate-200 rounded-bl-none markdown-content'
+                          : 'bg-slate-700 text-slate-200 rounded-bl-none prose prose-invert'
                       }`}
                     >
                       <ReactMarkdown 
