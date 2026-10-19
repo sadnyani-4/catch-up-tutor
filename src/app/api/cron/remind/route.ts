@@ -2,7 +2,10 @@ import { NextResponse } from 'next/server';
 import { Resend } from 'resend';
 import { supabase } from '@/lib/supabase';
 
-const resend = new Resend(process.env.RESEND_API_KEY!);
+// Lazy initialize Resend to prevent build-time crashes when environment variables are missing
+const getResend = () => {
+  return new Resend(process.env.RESEND_API_KEY || 're_placeholder');
+};
 
 export async function GET() {
   try {
@@ -15,9 +18,10 @@ export async function GET() {
     if (error) throw error;
 
     if (dueCards && dueCards.length > 0) {
+      const resend = getResend();
       await resend.emails.send({
         from: 'AITutor <onboarding@resend.dev>',
-        to: [process.env.MY_EMAIL!],
+        to: [process.env.MY_EMAIL || 'user@example.com'],
         subject: `📚 You have ${dueCards.length} Flashcards to Review Today!`,
         html: `
           <h2>Time to Study!</h2>
@@ -25,7 +29,7 @@ export async function GET() {
           <ul>
             ${dueCards.map((card) => `<li><strong>${card.course_title}:</strong>${card.question}</li>`).join('')}
           </ul>
-          <p><a href="http://localhost:3000">Open AI Tutor to Review</a></p>
+          <p><a href="https://${process.env.VERCEL_PROJECT_PRODUCTION_URL || 'localhost:3000'}">Open AI Tutor to Review</a></p>
         `,
       });
       return NextResponse.json({ sent: true, count: dueCards.length });
