@@ -1,10 +1,21 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+let cachedSupabase: SupabaseClient | null = null;
 
-if (!supabaseUrl && process.env.NODE_ENV !== 'production') {
-  console.warn('Missing Supabase Environment Variables');
-}
+export const getSupabase = () => {
+  if (cachedSupabase) return cachedSupabase;
 
-export const supabase = createClient(supabaseUrl, supabaseKey);
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+
+  cachedSupabase = createClient(supabaseUrl, supabaseKey);
+  return cachedSupabase;
+};
+
+// Proxy export to maintain existing imports across your project without breaking changes
+export const supabase = new Proxy({} as SupabaseClient, {
+  get(_, prop) {
+    const client = getSupabase();
+    return (client as any)[prop];
+  },
+});
