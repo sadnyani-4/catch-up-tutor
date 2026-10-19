@@ -84,4 +84,4 @@ The easiest way to host your app for free is using Vercel:
 4. Click Deploy!
 
 # Link
-https://catch-up-tutor-itwr.vercel.app/
+https://catch-up-tutor.vercel.app/
