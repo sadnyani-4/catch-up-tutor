@@ -497,7 +497,7 @@ export default function Home() {
               <Database className="h-4 w-4 text-blue-300" /> Notion study workspace
             </div>
             <p className="text-xs leading-5 text-slate-400">
-              Import a shared Notion page as lecture material, or save this lesson and its flashcards under that page.
+              You can import a shared Notion page as lecture material, or save this lesson and its flashcards under that page.
               Imported text is sent to Google Gemini; do not use confidential or personal material.
             </p>
             <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto]">
