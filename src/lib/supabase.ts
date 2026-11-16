@@ -16,6 +16,7 @@ export const getSupabase = () => {
 export const supabase = new Proxy({} as SupabaseClient, {
   get(_, prop) {
     const client = getSupabase();
-    return (client as any)[prop];
+    const value = Reflect.get(client, prop, client);
+    return typeof value === 'function' ? value.bind(client) : value;
   },
 });

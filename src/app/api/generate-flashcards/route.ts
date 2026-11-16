@@ -2,12 +2,32 @@ import { NextResponse } from 'next/server';
 import { GoogleGenAI, Type } from '@google/genai';
 import { supabase } from '@/lib/supabase';
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-
 export async function POST(req: Request) {
   try {
-    const { lectureText, courseTitle } = await req.json();
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json(
+        { error: 'Flashcard generation is not configured. Add GEMINI_API_KEY to the server environment.' },
+        { status: 503 },
+      );
+    }
+    const body: unknown = await req.json();
+    if (
+      typeof body !== 'object' ||
+      body === null ||
+      !('lectureText' in body) ||
+      typeof body.lectureText !== 'string' ||
+      !body.lectureText.trim()
+    ) {
+      return NextResponse.json({ error: 'Lecture text is required to generate flashcards.' }, { status: 400 });
+    }
+    const lectureText = body.lectureText;
+    const courseTitle =
+      'courseTitle' in body && typeof body.courseTitle === 'string'
+        ? body.courseTitle.slice(0, 120)
+        : 'Missed Lecture';
 
+    const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
       model: 'gemini-3.8-flash',
       contents: `You are an expert study assistant. Analyze this lecture material thoroughly (including all described diagrams, figures, and charts). 
@@ -37,8 +57,21 @@ export async function POST(req: Request) {
     });
 
     const flashcardsData = JSON.parse(response.text || '[]');
+    if (
+      !Array.isArray(flashcardsData) ||
+      flashcardsData.some(
+        (card) =>
+          typeof card !== 'object' ||
+          card === null ||
+          typeof card.question !== 'string' ||
+          typeof card.answer !== 'string',
+      )
+    ) {
+      return NextResponse.json({ error: 'The AI returned invalid flashcards. Please try again.' }, { status: 502 });
+    }
 
     const recordsToInsert = flashcardsData.map((fc: { question: string; answer: string }) => ({
+      id: crypto.randomUUID(),
       course_title: courseTitle || 'Missed Lecture',
       question: fc.question,
       answer: fc.answer,
@@ -46,13 +79,22 @@ export async function POST(req: Request) {
       interval_days: 1,
     }));
 
-    const { data, error } = await supabase.from('flashcards').insert(recordsToInsert).select();
+    const hasSupabase = Boolean(
+      process.env.ENABLE_FLASHCARD_PERSISTENCE === 'true' &&
+      process.env.NEXT_PUBLIC_SUPABASE_URL &&
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    );
 
+    if (!hasSupabase) {
+      return NextResponse.json({ success: true, persisted: false, flashcards: recordsToInsert });
+    }
+
+    const { data, error } = await supabase.from('flashcards').insert(recordsToInsert).select();
     if (error) throw error;
 
-    return NextResponse.json({ success: true, flashcards: data });
-  } catch (error: any) {
+    return NextResponse.json({ success: true, persisted: true, flashcards: data });
+  } catch (error) {
     console.error('Error in /api/generate-flashcards:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: 'Flashcard generation or saving failed.' }, { status: 502 });
   }
 }

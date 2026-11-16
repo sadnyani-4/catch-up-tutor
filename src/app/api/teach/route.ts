@@ -1,15 +1,30 @@
 import { NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-
 export async function POST(req: Request) {
   try {
-    const formData = await req.formData();
-    const file = formData.get('file') as File;
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json(
+        { error: 'PDF analysis is not configured. Add GEMINI_API_KEY to the server environment.' },
+        { status: 503 },
+      );
+    }
 
-    if (!file) {
-      return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+    const formData = await req.formData();
+    const file = formData.get('file');
+
+    if (!(file instanceof File)) {
+      return NextResponse.json({ error: 'Choose a PDF file to analyze.' }, { status: 400 });
+    }
+    if (file.size === 0 || file.size > 15 * 1024 * 1024) {
+      return NextResponse.json(
+        { error: 'The PDF must be smaller than 15 MB and cannot be empty.' },
+        { status: 413 },
+      );
+    }
+    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+      return NextResponse.json({ error: 'Only PDF files are supported.' }, { status: 415 });
     }
 
     // Convert file to base64 inline data for Gemini
@@ -66,6 +81,7 @@ export async function POST(req: Request) {
 `;
 
     // Pass the PDF directly to Gemini 3.8 Flash
+    const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
       model: 'gemini-3.8-flash',
       contents: [
@@ -83,8 +99,11 @@ export async function POST(req: Request) {
       explanation: response.text,
       extractedText: response.text,
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error in /api/teach:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json(
+      { error: 'PDF analysis failed. Please try again with a different PDF.' },
+      { status: 502 },
+    );
   }
 }

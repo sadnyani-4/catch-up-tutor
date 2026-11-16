@@ -1,25 +1,79 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { supabase } from '@/lib/supabase';
-import { Upload, BookOpen, Layers, Send, RefreshCw, MessageSquare, VolumeX, Pause, Play, Sparkles, Database } from 'lucide-react';
+import { Upload, BookOpen, Layers, Send, RefreshCw, MessageSquare, VolumeX, Pause, Play, Sparkles, Database, FileText } from 'lucide-react';
+import { sampleFlashcards, sampleLesson } from '@/lib/intake-demo';
+
+type SavedFlashcard = {
+  id: string;
+  course_title: string;
+  question: string;
+  answer: string;
+  next_review_date: string;
+};
+
+type ChatStreamEvent =
+  | { type: 'status'; message: string }
+  | { type: 'token'; text: string }
+  | { type: 'error'; message: string }
+  | { type: 'done' };
+
+function parseChatStreamEvent(line: string): ChatStreamEvent {
+  const value: unknown = JSON.parse(line);
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    !('type' in value) ||
+    typeof value.type !== 'string'
+  ) {
+    throw new Error('The tutor returned an invalid response.');
+  }
+
+  if (value.type === 'status' && 'message' in value && typeof value.message === 'string') {
+    return { type: 'status', message: value.message };
+  }
+  if (value.type === 'token' && 'text' in value && typeof value.text === 'string') {
+    return { type: 'token', text: value.text };
+  }
+  if (value.type === 'error' && 'message' in value && typeof value.message === 'string') {
+    return { type: 'error', message: value.message };
+  }
+  if (value.type === 'done') return { type: 'done' };
+
+  throw new Error('The tutor returned an invalid response.');
+}
 
 export default function Home() {
   const [file, setFile] = useState<File | null>(null);
   const [courseTitle, setCourseTitle] = useState('');
+  const [notionPageUrl, setNotionPageUrl] = useState('');
+  const [notionNotice, setNotionNotice] = useState('');
+  const [notionExportUrl, setNotionExportUrl] = useState('');
+  const [notionSaving, setNotionSaving] = useState(false);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
+  const [flashcardNotice, setFlashcardNotice] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
   const [explanation, setExplanation] = useState('');
   const [rawText, setRawText] = useState('');
-  const [flashcards, setFlashcards] = useState<any[]>([]);
+  const [flashcards, setFlashcards] = useState<{
+    id?: string;
+    course_title?: string;
+    question: string;
+    answer: string;
+    next_review_date?: string;
+  }[]>([]);
   const [activeTab, setActiveTab] = useState<'lesson' | 'flashcards' | 'chat' | 'saved-library'>('lesson');
   const [flippedIndex, setFlippedIndex] = useState<number | null>(null);
+  const [isSampleSession, setIsSampleSession] = useState(false);
 
   // Supabase Library State
-  const [savedFlashcards, setSavedFlashcards] = useState<any[]>([]);
+  const [savedFlashcards, setSavedFlashcards] = useState<SavedFlashcard[]>([]);
   const [loadingSaved, setLoadingSaved] = useState(false);
 
   // Audio Speech States
@@ -30,6 +84,13 @@ export default function Home() {
   const [chatMessages, setChatMessages] = useState<{ role: string; content: string }[]>([]);
   const [inputMessage, setInputMessage] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
+  const [chatError, setChatError] = useState('');
+  const [chatStatus, setChatStatus] = useState('Tutor is thinking...');
+  const hasSupabase = Boolean(
+    process.env.NEXT_PUBLIC_ENABLE_FLASHCARD_PERSISTENCE === 'true' &&
+    process.env.NEXT_PUBLIC_SUPABASE_URL &&
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+  );
 
   // Stop speech when leaving or generating new lesson
   useEffect(() => {
@@ -51,8 +112,9 @@ export default function Home() {
 
       if (error) throw error;
       setSavedFlashcards(data || []);
-    } catch (err: any) {
-      alert('Error fetching saved flashcards: ' + err.message);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Unexpected error.';
+      setErrorMessage('Could not load the saved library: ' + message);
     } finally {
       setLoadingSaved(false);
     }
@@ -102,7 +164,12 @@ export default function Home() {
   };
 
   const handleUploadAndProcess = async () => {
-    if (!file) return alert('Please select a PDF file first!');
+    if (!file) {
+      setErrorMessage('Choose a lecture PDF before starting the upload.');
+      return;
+    }
+    setErrorMessage('');
+    setFlashcardNotice('');
     setLoading(true);
     setStatus('Analyzing document structure & visuals with Gemini 3.8 Flash...');
 
@@ -114,7 +181,10 @@ export default function Home() {
       const teachRes = await fetch('/api/teach', { method: 'POST', body: formData });
       const teachData = await teachRes.json();
 
-      if (teachData.error) throw new Error(teachData.error);
+      if (!teachRes.ok || teachData.error) throw new Error(teachData.error || 'Could not analyze the PDF.');
+      if (typeof teachData.explanation !== 'string' || !teachData.explanation) {
+        throw new Error('The analysis did not include a lesson. Please try another PDF.');
+      }
       setExplanation(teachData.explanation);
       setRawText(teachData.extractedText || teachData.explanation);
 
@@ -129,22 +199,165 @@ export default function Home() {
       });
 
       const fcData = await fcRes.json();
-      if (fcData.error) throw new Error(fcData.error);
+      if (!fcRes.ok || fcData.error) throw new Error(fcData.error || 'Could not generate flashcards.');
       setFlashcards(fcData.flashcards);
 
-      setStatus('Ready!');
+      setStatus(fcData.persisted ? 'Ready!' : 'Ready! Cards are session-only.');
+      setFlashcardNotice(
+        fcData.persisted
+          ? 'Flashcards were saved to your configured library.'
+          : 'Flashcards are available in this session only; library persistence is disabled.',
+      );
+      setIsSampleSession(false);
+      setChatMessages([]);
       setActiveTab('lesson');
-    } catch (err: any) {
-      alert('Error: ' + err.message);
+    } catch (err: unknown) {
+      setErrorMessage(err instanceof Error ? err.message : 'Something went wrong while processing the PDF.');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleImportFromNotion = async () => {
+    if (!notionPageUrl.trim()) {
+      setErrorMessage('Paste a Notion page URL or ID before importing.');
+      return;
+    }
+
+    setErrorMessage('');
+    setFlashcardNotice('');
+    setNotionNotice('');
+    setNotionExportUrl('');
+    setLoading(true);
+    setStatus('Importing Notion page...');
+
+    try {
+      handleStopSpeech();
+      const importRes = await fetch('/api/notion/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pageUrlOrId: notionPageUrl }),
+      });
+      const importData = await importRes.json();
+      if (!importRes.ok || importData.error) {
+        throw new Error(importData.error || 'Could not import the Notion page.');
+      }
+      if (typeof importData.lectureText !== 'string' || !importData.lectureText.trim()) {
+        throw new Error('The Notion page did not include readable study material.');
+      }
+
+      const importedCourseTitle = courseTitle.trim() || importData.title || 'Notion study page';
+      setCourseTitle(importedCourseTitle);
+      setStatus('Building a lesson from your Notion page...');
+      const teachRes = await fetch('/api/teach-text', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lectureText: importData.lectureText }),
+      });
+      const teachData = await teachRes.json();
+      if (!teachRes.ok || teachData.error) {
+        throw new Error(teachData.error || 'Could not build a lesson from the Notion page.');
+      }
+      if (typeof teachData.explanation !== 'string' || !teachData.explanation) {
+        throw new Error('The AI did not return a lesson. Please try again.');
+      }
+
+      setExplanation(teachData.explanation);
+      setRawText(importData.lectureText);
+      setStatus('Building flashcards...');
+      const flashcardsRes = await fetch('/api/generate-flashcards', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lectureText: importData.lectureText,
+          courseTitle: importedCourseTitle,
+        }),
+      });
+      const flashcardsData = await flashcardsRes.json();
+      if (!flashcardsRes.ok || flashcardsData.error) {
+        throw new Error(flashcardsData.error || 'Could not generate flashcards.');
+      }
+
+      setFile(null);
+      setFlashcards(flashcardsData.flashcards);
+      setFlashcardNotice(
+        flashcardsData.persisted
+          ? 'Flashcards were saved to your configured library.'
+          : 'Flashcards are available in this session only; library persistence is disabled.',
+      );
+      setNotionNotice(
+        `Imported "${importedCourseTitle}" from Notion${importData.truncated ? ' (limited to 40,000 characters).' : '.'}`,
+      );
+      setIsSampleSession(false);
+      setChatMessages([]);
+      setActiveTab('lesson');
+      setStatus('Ready!');
+    } catch (error: unknown) {
+      setErrorMessage(error instanceof Error ? error.message : 'Could not import the Notion page.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSaveToNotion = async () => {
+    if (!explanation || !notionPageUrl.trim()) {
+      setErrorMessage('Add a Notion parent page and create a lesson before saving.');
+      return;
+    }
+
+    setErrorMessage('');
+    setNotionNotice('');
+    setNotionExportUrl('');
+    setNotionSaving(true);
+    try {
+      const response = await fetch('/api/notion/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pageUrlOrId: notionPageUrl,
+          courseTitle: courseTitle || 'Catch-Up Tutor lesson',
+          lesson: explanation,
+          flashcards: flashcards.map(({ question, answer }) => ({ question, answer })),
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok || data.error) {
+        throw new Error(data.error || 'Could not save the lesson to Notion.');
+      }
+      if (typeof data.url !== 'string') {
+        throw new Error('Notion created the page but did not return a link.');
+      }
+
+      setNotionNotice('Lesson and flashcards saved as a new Notion page.');
+      setNotionExportUrl(data.url);
+    } catch (error: unknown) {
+      setErrorMessage(error instanceof Error ? error.message : 'Could not save the lesson to Notion.');
+    } finally {
+      setNotionSaving(false);
+    }
+  };
+
+  const handleTrySample = () => {
+    handleStopSpeech();
+    setErrorMessage('');
+    setFlashcardNotice('Sample flashcards are preloaded locally and are not saved.');
+    setCourseTitle('Engineering systems (sample)');
+    setFile(null);
+    setExplanation(sampleLesson);
+    setRawText(sampleLesson);
+    setFlashcards(sampleFlashcards);
+    setFlippedIndex(null);
+    setChatMessages([]);
+    setIsSampleSession(true);
+    setActiveTab('lesson');
   };
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputMessage.trim() || chatLoading) return;
 
+    setChatError('');
+    setChatStatus('Tutor is thinking...');
     const newMessages = [...chatMessages, { role: 'user', content: inputMessage }];
     setChatMessages(newMessages);
     setInputMessage('');
@@ -156,36 +369,85 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: newMessages, documentText: rawText }),
       });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'The tutor could not answer.');
+      }
+      if (!res.body) throw new Error('The tutor response stream is unavailable.');
 
-      setChatMessages([...newMessages, { role: 'model', content: data.reply }]);
-    } catch (err: any) {
-      alert('Chat Error: ' + err.message);
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let reply = '';
+      let completed = false;
+      let streamError: string | undefined;
+
+      const processLine = (line: string) => {
+        if (!line.trim()) return;
+        const event = parseChatStreamEvent(line);
+        if (event.type === 'status') setChatStatus(event.message);
+        if (event.type === 'token') {
+          reply += event.text;
+          setChatMessages([...newMessages, { role: 'model', content: reply }]);
+          setChatStatus('Tutor is replying...');
+        }
+        if (event.type === 'error') streamError = event.message;
+        if (event.type === 'done') completed = true;
+      };
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          buffer += decoder.decode(value, { stream: !done });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() ?? '';
+          lines.forEach(processLine);
+
+          if (done) {
+            processLine(buffer);
+            break;
+          }
+        }
+      } finally {
+        reader.releaseLock();
+      }
+
+      if (streamError) throw new Error(streamError);
+      if (!completed || !reply.trim()) throw new Error('The tutor response ended unexpectedly.');
+    } catch (err: unknown) {
+      setChatError(err instanceof Error ? err.message : 'The tutor could not answer. Please try again.');
     } finally {
       setChatLoading(false);
     }
   };
 
   return (
-    <main className="min-h-screen bg-slate-900 text-slate-100 p-6 md:p-12">
-      <div className="max-w-5xl mx-auto space-y-8">
+    <main className="study-page min-h-screen p-6 md:p-12">
+      <div className="study-shell max-w-5xl mx-auto space-y-8">
         
         {/* Header */}
-        <header className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-800 pb-6 gap-4">
+        <header className="study-header flex flex-col md:flex-row md:items-center justify-between border-b border-slate-800 pb-6 gap-4">
           <div>
-            <div className="flex items-center gap-2 text-blue-400 font-semibold text-sm uppercase tracking-wider">
+            <div className="study-eyebrow flex items-center gap-2 text-blue-400 font-semibold text-sm uppercase tracking-wider">
               <Sparkles className="h-4 w-4" /> AI Zero-Backlog Engine
             </div>
-            <h1 className="text-3xl font-extrabold tracking-tight mt-1 text-white">Catch-Up Tutor</h1>
+            <h1 className="study-title text-3xl font-extrabold tracking-tight mt-1 text-white">Catch-Up Tutor</h1>
           </div>
-          <p className="text-slate-400 text-sm max-w-xs">
-            Turn dense lecture PDFs into immersive audio lessons, interactive chat, and smart flashcards.
-          </p>
+          <div className="flex flex-col items-start gap-3 md:items-end">
+            <p className="text-slate-400 text-sm max-w-xs md:text-right">
+              Turn lecture PDFs or Notion pages into guided lessons, interactive chat, and smart flashcards.
+            </p>
+            <Link
+              href="/intake"
+              className="study-intake-link inline-flex items-center gap-2 rounded-lg border border-indigo-400/40 bg-indigo-400/10 px-3 py-2 text-sm font-medium text-indigo-200 transition hover:bg-indigo-400/20"
+            >
+              <FileText className="h-4 w-4" /> Explore the invention-intake demo
+            </Link>
+          </div>
         </header>
 
         {/* Upload Card */}
-        <div className="bg-slate-800/60 backdrop-blur border border-slate-700/60 p-6 rounded-2xl shadow-xl space-y-4">
+        <div className="study-upload-panel bg-slate-800/60 backdrop-blur border border-slate-700/60 p-6 rounded-2xl shadow-xl space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-400 uppercase mb-2">Course Name</label>
@@ -205,24 +467,110 @@ export default function Home() {
                 onChange={(e) => setFile(e.target.files?.[0] || null)}
                 className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-slate-300 file:mr-4 file:py-1.5 file:px-4 file:rounded-lg file:border-0 file:bg-blue-600 file:text-white hover:file:bg-blue-500 text-sm cursor-pointer"
               />
+              <p className="mt-2 text-xs leading-5 text-amber-200/80">
+                Uploaded PDFs are sent to Google Gemini for analysis. Do not upload confidential or personal material.
+              </p>
             </div>
           </div>
 
-          <button
-            onClick={handleUploadAndProcess}
-            disabled={loading}
-            className="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-3.5 rounded-xl shadow-lg shadow-blue-600/20 disabled:opacity-50 transition flex items-center justify-center gap-2 cursor-pointer"
-          >
-            {loading ? <RefreshCw className="animate-spin h-5 w-5" /> : <Upload className="h-5 w-5" />}
-            {loading ? status : 'Process PDF & Launch Study Hub'}
-          </button>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <button
+              onClick={handleUploadAndProcess}
+              disabled={loading || notionSaving}
+              className="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-3.5 rounded-xl shadow-lg shadow-blue-600/20 disabled:opacity-50 transition flex items-center justify-center gap-2 cursor-pointer"
+            >
+              {loading ? <RefreshCw className="animate-spin h-5 w-5" /> : <Upload className="h-5 w-5" />}
+              {loading ? status : 'Process PDF'}
+            </button>
+            <button
+              type="button"
+              onClick={handleTrySample}
+              disabled={loading || notionSaving}
+              className="w-full border border-slate-600 bg-slate-700/60 hover:bg-slate-700 text-slate-100 font-medium py-3.5 rounded-xl transition flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              <Sparkles className="h-5 w-5 text-blue-300" />
+              Try sample session
+            </button>
+          </div>
+          <div className="space-y-3 rounded-xl border border-slate-700 bg-slate-900/50 p-4">
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-200">
+              <Database className="h-4 w-4 text-blue-300" /> Notion study workspace
+            </div>
+            <p className="text-xs leading-5 text-slate-400">
+              Import a shared Notion page as lecture material, or save this lesson and its flashcards under that page.
+              Imported text is sent to Google Gemini; do not use confidential or personal material.
+            </p>
+            <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto]">
+              <input
+                type="text"
+                aria-label="Notion page URL or ID"
+                placeholder="Paste a Notion page URL or ID"
+                value={notionPageUrl}
+                onChange={(event) => {
+                  setNotionPageUrl(event.target.value);
+                  setNotionNotice('');
+                  setNotionExportUrl('');
+                }}
+                className="min-w-0 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white placeholder:text-slate-500 focus:border-blue-400 focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={handleImportFromNotion}
+                disabled={loading || notionSaving || !notionPageUrl.trim()}
+                className="rounded-lg border border-slate-600 px-4 py-2.5 text-sm font-medium text-slate-100 transition hover:bg-slate-800 disabled:opacity-50"
+              >
+                {loading ? status : 'Import page'}
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveToNotion}
+                disabled={loading || notionSaving || !explanation || !notionPageUrl.trim()}
+                className="rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-500 disabled:opacity-50"
+              >
+                {notionSaving ? 'Saving...' : 'Save lesson + cards'}
+              </button>
+            </div>
+            <p className="text-xs leading-5 text-slate-500">
+              Requires <code>NOTION_API_KEY</code> on the server and access granted to the integration for this page.
+            </p>
+            {notionNotice && (
+              <p className="text-xs text-emerald-200" role="status" aria-live="polite">
+                {notionNotice}
+              </p>
+            )}
+            {notionExportUrl && (
+              <a
+                href={notionExportUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex text-sm font-medium text-blue-300 underline underline-offset-4 hover:text-blue-200"
+              >
+                Open saved Notion page
+              </a>
+            )}
+          </div>
+          {errorMessage && (
+            <p role="alert" className="rounded-xl border border-rose-400/30 bg-rose-950/30 px-4 py-3 text-sm text-rose-200">
+              {errorMessage}
+            </p>
+          )}
+          {isSampleSession && (
+            <p className="text-xs text-slate-400" role="status">
+              Sample lesson and flashcards are preloaded locally. Tutor chat still uses the configured Gemini API.
+            </p>
+          )}
+          {flashcardNotice && !isSampleSession && (
+            <p className="text-xs text-slate-400" role="status" aria-live="polite">
+              {flashcardNotice}
+            </p>
+          )}
         </div>
 
         {/* Content Section */}
         <div className="space-y-6">
           
           {/* Navigation Tabs Bar */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-slate-800 pb-4 gap-4">
+          <div className="study-tabs flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-slate-800 pb-4 gap-4">
             <div className="flex gap-2 flex-wrap">
               {explanation && (
                 <>
@@ -254,7 +602,7 @@ export default function Home() {
               )}
 
               {/* Always accessible database library button */}
-              <button
+              {hasSupabase && <button
                 onClick={() => {
                   setActiveTab('saved-library');
                   fetchSavedFlashcards();
@@ -264,7 +612,7 @@ export default function Home() {
                 }`}
               >
                 <Database className="h-4 w-4" /> Supabase Library ({savedFlashcards.length})
-              </button>
+              </button>}
             </div>
 
             {/* Audio Controls Bar */}
@@ -377,8 +725,13 @@ export default function Home() {
                 ))}
                 {chatLoading && (
                   <div className="text-slate-400 text-xs italic flex items-center gap-2">
-                    <RefreshCw className="h-3 w-3 animate-spin" /> Tutor is thinking...
+                    <RefreshCw className="h-3 w-3 animate-spin" /> {chatStatus}
                   </div>
+                )}
+                {chatError && (
+                  <p role="alert" className="rounded-lg border border-rose-400/30 bg-rose-950/30 px-3 py-2 text-sm text-rose-200">
+                    {chatError}
+                  </p>
                 )}
               </div>
 
