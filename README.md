@@ -4,6 +4,8 @@ A portfolio project demonstrating two practical, bounded AI workflows built with
 
 This is an AI-assisted workflow demo, not a fully autonomous agent or a production multi-user service.
 
+The two demos are independent workflows in one repository: the homepage (`/`) is the Catch-Up Tutor for lecture material, while **Invention Intake Copilot** is a separate demo at `/intake` for a fictional invention disclosure. The intake demo does not process tutor content or show how the tutor works; they share the app's AI and engineering patterns, not a workflow.
+
 ## What this project demonstrates
 
 - Connecting a web app to generative AI through server-side API routes.
