@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
+import { getGeminiErrorResponse } from '@/lib/gemini-errors';
 
 export async function POST(req: Request) {
   try {
@@ -81,7 +82,13 @@ export async function POST(req: Request) {
 `;
 
     // Pass the PDF directly to Gemini 3.8 Flash
-    const ai = new GoogleGenAI({ apiKey });
+    const ai = new GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        timeout: 20_000,
+        retryOptions: { attempts: 1, initialDelay: 1, maxDelay: 2, jitter: 0 },
+      },
+    });
     const response = await ai.models.generateContent({
       model: 'gemini-3.8-flash',
       contents: [
@@ -101,9 +108,14 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     console.error('Error in /api/teach:', error);
+    const geminiFailure = getGeminiErrorResponse(error);
     return NextResponse.json(
-      { error: 'PDF analysis failed. Please try again with a different PDF.' },
-      { status: 502 },
+      {
+        error:
+          geminiFailure?.message ??
+          'PDF analysis failed. Please try again with a different PDF.',
+      },
+      { status: geminiFailure?.status ?? 502 },
     );
   }
 }

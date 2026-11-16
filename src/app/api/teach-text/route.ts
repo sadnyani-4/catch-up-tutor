@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
+import { getGeminiErrorResponse } from '@/lib/gemini-errors';
 import {
   formatIntakeSources,
   isIntakeSources,
@@ -75,7 +76,13 @@ Study material:
 ${sourceText}`;
 
   try {
-    const ai = new GoogleGenAI({ apiKey });
+    const ai = new GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        timeout: 20_000,
+        retryOptions: { attempts: 1, initialDelay: 1, maxDelay: 2, jitter: 0 },
+      },
+    });
     const response = await ai.models.generateContent({
       model: 'gemini-3.8-flash',
       contents: instructions,
@@ -88,6 +95,14 @@ ${sourceText}`;
     return NextResponse.json({ explanation: response.text, extractedText: sourceText });
   } catch (error) {
     console.error('Error in /api/teach-text:', error instanceof Error ? error.message : 'Unknown error');
-    return NextResponse.json({ error: 'Lesson generation failed. Please try again shortly.' }, { status: 502 });
+    const geminiFailure = getGeminiErrorResponse(error);
+    return NextResponse.json(
+      {
+        error:
+          geminiFailure?.message ??
+          'Lesson generation failed. Please try again shortly.',
+      },
+      { status: geminiFailure?.status ?? 502 },
+    );
   }
 }

@@ -1,4 +1,5 @@
 import { ApiError } from "@google/genai";
+import { getGeminiErrorResponse } from "./gemini-errors";
 
 export function shouldTryChatFallback(error: unknown) {
   return (
@@ -9,6 +10,9 @@ export function shouldTryChatFallback(error: unknown) {
 }
 
 export function getChatErrorResponse(error: unknown) {
+  const geminiFailure = getGeminiErrorResponse(error);
+  if (geminiFailure) return geminiFailure;
+
   if (error instanceof ApiError && error.status === 503) {
     return {
       status: 503,

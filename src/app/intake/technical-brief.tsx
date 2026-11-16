@@ -13,6 +13,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { parseChatStreamEvent } from "@/lib/chat-stream";
+import { readApiResponse } from "@/lib/api-response";
 import type { IntakeSource } from "@/lib/intake-sources";
 
 type Flashcard = { question: string; answer: string };
@@ -60,13 +61,18 @@ export default function TechnicalBrief({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sources, purpose: "invention-review" }),
       });
-      const briefResult = await briefResponse.json();
-      if (!briefResponse.ok || briefResult.error) {
-        throw new Error(briefResult.error || "Could not generate the technical brief.");
+      const briefResult = await readApiResponse(briefResponse);
+      if (!briefResponse.ok || typeof briefResult.error === "string") {
+        throw new Error(
+          typeof briefResult.error === "string"
+            ? briefResult.error
+            : "Could not generate the technical brief.",
+        );
       }
       if (typeof briefResult.explanation !== "string" || !briefResult.explanation.trim()) {
         throw new Error("The AI did not return a technical brief.");
       }
+      const explanation = briefResult.explanation;
 
       setGenerationStatus("Building reviewer flashcards...");
       const cardsResponse = await fetch("/api/generate-flashcards", {
@@ -78,9 +84,13 @@ export default function TechnicalBrief({
           purpose: "invention-review",
         }),
       });
-      const cardsResult = await cardsResponse.json();
-      if (!cardsResponse.ok || cardsResult.error) {
-        throw new Error(cardsResult.error || "Could not generate reviewer flashcards.");
+      const cardsResult = await readApiResponse(cardsResponse);
+      if (!cardsResponse.ok || typeof cardsResult.error === "string") {
+        throw new Error(
+          typeof cardsResult.error === "string"
+            ? cardsResult.error
+            : "Could not generate reviewer flashcards.",
+        );
       }
       if (
         !Array.isArray(cardsResult.flashcards) ||
@@ -89,7 +99,7 @@ export default function TechnicalBrief({
         throw new Error("The AI returned invalid reviewer flashcards.");
       }
 
-      setBrief(briefResult.explanation);
+      setBrief(explanation);
       setFlashcards(cardsResult.flashcards);
       setMessages([]);
       setChatError("");
@@ -129,8 +139,12 @@ export default function TechnicalBrief({
       });
 
       if (!response.ok) {
-        const result = await response.json();
-        throw new Error(result.error || "The technical assistant could not answer.");
+        const result = await readApiResponse(response);
+        throw new Error(
+          typeof result.error === "string"
+            ? result.error
+            : "The technical assistant could not answer.",
+        );
       }
       if (!response.body) throw new Error("The answer stream is unavailable.");
 

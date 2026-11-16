@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { GoogleGenAI, Type } from '@google/genai';
 import { supabase } from '@/lib/supabase';
 import { formatIntakeSources, isIntakeSources } from '@/lib/intake-sources';
+import { getGeminiErrorResponse } from '@/lib/gemini-errors';
 
 export async function POST(req: Request) {
   try {
@@ -68,7 +69,13 @@ ${sourceText.slice(0, 40000)}`
       Lecture Material:
       ${sourceText.slice(0, 50000)}`;
 
-    const ai = new GoogleGenAI({ apiKey });
+    const ai = new GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        timeout: 20_000,
+        retryOptions: { attempts: 1, initialDelay: 1, maxDelay: 2, jitter: 0 },
+      },
+    });
     const response = await ai.models.generateContent({
       model: 'gemini-3.8-flash',
       contents: prompt,
@@ -127,6 +134,14 @@ ${sourceText.slice(0, 40000)}`
     return NextResponse.json({ success: true, persisted: true, flashcards: data });
   } catch (error) {
     console.error('Error in /api/generate-flashcards:', error);
-    return NextResponse.json({ error: 'Flashcard generation or saving failed.' }, { status: 502 });
+    const geminiFailure = getGeminiErrorResponse(error);
+    return NextResponse.json(
+      {
+        error:
+          geminiFailure?.message ??
+          'Flashcard generation or saving failed.',
+      },
+      { status: geminiFailure?.status ?? 502 },
+    );
   }
 }

@@ -20,6 +20,7 @@ import {
   type IntakeAnalysis,
   preparedIntakeExample,
 } from "@/lib/intake-demo";
+import { readApiResponse } from "@/lib/api-response";
 import {
   createTextSources,
   isIntakeSources,
@@ -109,9 +110,13 @@ export default function IntakeWorkspace() {
         method: "POST",
         body: formData,
       });
-      const result = await response.json();
-      if (!response.ok || result.error) {
-        throw new Error(result.error || "Could not read the PDF disclosure.");
+      const result = await readApiResponse(response);
+      if (!response.ok || typeof result.error === "string") {
+        throw new Error(
+          typeof result.error === "string"
+            ? result.error
+            : "Could not read the PDF disclosure.",
+        );
       }
       if (typeof result.title !== "string" || !isIntakeSources(result.sources)) {
         throw new Error("The PDF did not produce readable source passages.");
@@ -158,9 +163,13 @@ export default function IntakeWorkspace() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ pageUrlOrId: notionPage }),
       });
-      const result = await response.json();
-      if (!response.ok || result.error) {
-        throw new Error(result.error || "Could not import the Notion page.");
+      const result = await readApiResponse(response);
+      if (!response.ok || typeof result.error === "string") {
+        throw new Error(
+          typeof result.error === "string"
+            ? result.error
+            : "Could not import the Notion page.",
+        );
       }
       if (typeof result.title !== "string" || typeof result.lectureText !== "string") {
         throw new Error("The Notion page did not include readable text.");
@@ -204,10 +213,14 @@ export default function IntakeWorkspace() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sources: selectedDisclosure.sources }),
       });
-      const result = await response.json();
+      const result = await readApiResponse(response);
 
       if (!response.ok) {
-        throw new Error(result.error || "The intake workflow could not run.");
+        throw new Error(
+          typeof result.error === "string"
+            ? result.error
+            : "The intake workflow could not run.",
+        );
       }
 
       const nextAnalysis = result.analysis as IntakeAnalysis;

@@ -1,6 +1,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { NextResponse } from "next/server";
 import type { IntakeCitation } from "@/lib/intake-demo";
+import { getGeminiErrorResponse } from "@/lib/gemini-errors";
 import {
   formatIntakeSources,
   isIntakeSources,
@@ -76,7 +77,13 @@ export async function POST(request: Request) {
         { status: 413 },
       );
     }
-    const ai = new GoogleGenAI({ apiKey });
+    const ai = new GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        timeout: 20_000,
+        retryOptions: { attempts: 1, initialDelay: 1, maxDelay: 2, jitter: 0 },
+      },
+    });
     const response = await ai.models.generateContent({
       model: "gemini-3.8-flash",
       contents: `You are assisting with administrative invention-intake preparation. This is not legal analysis.
@@ -169,9 +176,14 @@ ${sourceText}`,
     });
   } catch (error) {
     console.error("Error in /api/intake:", error);
+    const geminiFailure = getGeminiErrorResponse(error);
     return NextResponse.json(
-      { error: "The AI intake workflow failed. Please try again shortly." },
-      { status: 502 },
+      {
+        error:
+          geminiFailure?.message ??
+          "The AI intake workflow failed. Please try again shortly.",
+      },
+      { status: geminiFailure?.status ?? 502 },
     );
   }
 }
