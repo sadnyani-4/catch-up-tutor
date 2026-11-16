@@ -1,76 +1,64 @@
-# Catch-Up Tutor + Invention Intake Copilot
+# IP Intake & Technical Brief Copilot
 
-A portfolio project demonstrating two practical, bounded AI workflows built with Next.js, TypeScript, and Gemini. It is designed to show how AI can support real work while keeping inputs, outputs, privacy, and human review visible.
+A portfolio project demonstrating a connected AI workflow built with Next.js, TypeScript, and Gemini. A selected invention disclosure—PDF, pasted text, or optional Notion import—powers both an evidence-linked intake draft and a technical briefing with study cards and source-grounded Q&A.
 
-This is an AI-assisted workflow demo, not a fully autonomous agent or a production multi-user service.
+This is an AI-assisted workflow demo, not a fully autonomous agent, legal tool, or production multi-user service. The earlier general-purpose Catch-Up Tutor remains available at `/tutor` as a secondary demo.
 
-The two demos are independent workflows in one repository: the homepage (`/`) is the Catch-Up Tutor for lecture material, while **Invention Intake Copilot** is a separate demo at `/intake` for a fictional invention disclosure. The intake demo does not process tutor content or show how the tutor works; they share the app's AI and engineering patterns, not a workflow.
+The homepage (`/`) is the integrated IP copilot. Its **Intake review** and **Technical brief** tabs use the same selected source. A fictional example is available, but users can load their own non-confidential material.
 
 ## What this project demonstrates
 
 - Connecting a web app to generative AI through server-side API routes.
-- Turning source material into useful outputs: lessons, flashcards, and a structured intake draft.
+- Turning the same source material into complementary outputs: a structured intake draft, a technical explanation, reviewer flashcards, and grounded Q&A.
 - Validating structured model output and grounding intake claims in specific source passages.
-- Streaming tutor replies and handling provider timeouts with a backup model.
+- Streaming AI chat replies and handling provider timeouts with a backup model.
 - Integrating with Notion while keeping its API token on the server.
 - Preserving a human review step instead of treating model output as authoritative.
 
 ## Reviewer walkthrough
 
-### Catch-Up Tutor
+### Integrated IP copilot
 
-1. Choose **Try sample session** to see a preloaded lesson and flashcards without uploading a file or calling Gemini.
-2. Open **Tutor Chat** and ask a question. This uses Gemini, so chat requires `GEMINI_API_KEY`.
-3. To process your own material, upload a lecture PDF, or optionally import a Notion page. The tutor creates a lesson and flashcards, then lets you discuss the material and listen to the lesson.
-4. To explore Notion export, configure the optional integration and save a lesson under a shared Notion page.
+1. Open `/` and load a text-based PDF, paste disclosure text, optionally import a Notion page, or choose **Try fictional sample**.
+2. For user-provided material, confirm it is non-confidential and may be sent to Gemini. PDF text extraction itself happens locally; AI actions send the extracted source text to Gemini.
+3. In **Intake review**, choose **Analyze disclosure** for live AI output. Check source links, edit the draft, answer reviewer questions, and export JSON. The prepared example is available only for the fictional sample.
+4. Switch to **Technical brief** to generate an explanation, reviewer study cards, and source-grounded Q&A from that same disclosure.
 
-The sample lesson and cards are static demo content; the chat response is live AI output.
+### Secondary Catch-Up Tutor
 
-### Invention Intake Copilot
-
-1. Open **Explore the invention-intake demo**.
-2. Review the fictional source passages and choose **View prepared example** to inspect a prewritten draft without an API call.
-3. Choose **Analyze sample** to run the live Gemini workflow.
-4. Inspect the source links, edit the draft, answer reviewer questions, and export the result as JSON.
-
-The sample describes a fictional battery-cooling invention. It is intentionally limited to administrative intake preparation—not legal analysis.
+Visit `/tutor` for the older lecture-study workflow, including a static sample session, PDF or optional Notion import, generated lessons and flashcards, audio playback, and tutor chat. Notion import/export is separate from the primary IP workflow.
 
 ## How the workflows work
 
-### Tutor: source material to study session
+### IP copilot: one disclosure to two review modes
 
 ```text
-PDF upload or Notion page
-        -> server-side text/lesson processing with Gemini
-        -> lesson and flashcards
-        -> streamed tutor chat, audio playback, optional Notion export
+Fictional invention disclosure
+        -> Intake review: structured draft + source-linked facts + human review/export
+        -> Technical brief: grounded explanation + reviewer cards + streaming Q&A
 ```
 
-- PDFs are sent to Gemini for analysis. Notion pages are read through a private Notion integration; their text is then sent to Gemini for lesson and flashcard generation.
-- Tutor chat sends the current study material and conversation to Gemini. Replies stream to the page as they are generated. If the primary model is unavailable, the server tries a backup model and reports failures clearly.
-- Flashcards stay in the current session by default. Optional Supabase persistence is available, but this prototype has no sign-in or per-user data isolation.
+The selected source is divided into labeled passages (`[p1]`, `[p2]`, etc.) used by both modes. The intake route validates structured output and resolves citations only to passages supplied for that run. The technical-brief routes ask the model to cite those labels, state when the disclosure is silent, and avoid legal conclusions. A person remains responsible for review.
 
-### Invention Intake: disclosure to reviewable draft
+- PDF extraction preserves page numbers and requires selectable text; scanned PDFs need an OCR transcript pasted as text.
+- Pasted text and Notion content are divided into short passages for evidence linking. Source text is limited to 40,000 characters.
+- The fictional battery-cooling example remains available for a no-upload walkthrough.
 
-```text
-Fictional disclosure passages
-        -> Gemini returns a structured draft with source IDs
-        -> server validates the draft and resolves IDs to source passages
-        -> person reviews/edits the draft and exports JSON
-```
+### Secondary tutor workflow
 
-- The model receives only the built-in fictional sample; this demo does not accept invention-disclosure uploads.
-- The server checks the response shape and resolves citations from an allow-listed set of source IDs. The UI displays the original passages so a reviewer can verify each link.
-- Follow-up questions surface missing details. A person remains responsible for review and any next steps.
+The separate `/tutor` route retains the earlier study workflow: PDF or Notion material is processed into lessons and flashcards, with streamed chat and optional audio or Notion export. This content is not the source for the IP copilot.
 
 ## Where to look in the code
 
 | Area | Entry points |
 | --- | --- |
-| Tutor interface and PDF processing | [`src/app/page.tsx`](./src/app/page.tsx), [`src/app/api/teach/route.ts`](./src/app/api/teach/route.ts) |
+| Integrated homepage and workflow tabs | [`src/app/page.tsx`](./src/app/page.tsx), [`src/app/intake/workspace.tsx`](./src/app/intake/workspace.tsx) |
+| Source input and passage labeling | [`src/app/intake/workspace.tsx`](./src/app/intake/workspace.tsx), [`src/lib/intake-sources.ts`](./src/lib/intake-sources.ts), [`src/app/api/intake/parse-pdf/route.ts`](./src/app/api/intake/parse-pdf/route.ts) |
+| Technical brief, flashcards, and grounded Q&A | [`src/app/intake/technical-brief.tsx`](./src/app/intake/technical-brief.tsx), [`src/app/api/teach-text/route.ts`](./src/app/api/teach-text/route.ts) |
+| Secondary tutor interface and PDF processing | [`src/app/tutor/page.tsx`](./src/app/tutor/page.tsx), [`src/app/api/teach/route.ts`](./src/app/api/teach/route.ts) |
 | Streaming tutor chat | [`src/app/api/chat/route.ts`](./src/app/api/chat/route.ts) |
-| Notion import/export | [`src/lib/notion.ts`](./src/lib/notion.ts), [`src/app/api/notion/`](./src/app/api/notion/) |
-| Intake interface and fictional sources | [`src/app/intake/workspace.tsx`](./src/app/intake/workspace.tsx), [`src/lib/intake-demo.ts`](./src/lib/intake-demo.ts) |
+| Optional Notion import/export | [`src/lib/notion.ts`](./src/lib/notion.ts), [`src/app/api/notion/`](./src/app/api/notion/) |
+| Shared fictional disclosure | [`src/lib/intake-demo.ts`](./src/lib/intake-demo.ts) |
 | Evidence-constrained intake analysis | [`src/app/api/intake/route.ts`](./src/app/api/intake/route.ts) |
 
 ## Run locally
@@ -89,7 +77,7 @@ Fictional disclosure passages
    npm run dev
    ```
 
-5. Open [http://localhost:3000](http://localhost:3000).
+5. Open [http://localhost:3000](http://localhost:3000) for the IP copilot, or `/tutor` for the secondary study workflow.
 
 ## Configuration
 
@@ -99,7 +87,7 @@ Fictional disclosure passages
 GEMINI_API_KEY=your_gemini_api_key
 ```
 
-Required for live tutor chat, PDF/Notion lesson generation, flashcard generation, and **Analyze sample** in the intake demo. The preloaded tutor lesson/cards and **View prepared example** do not need a Gemini key.
+Required for live intake analysis, technical-brief generation, flashcards, grounded Q&A, and the secondary tutor's live features. **View prepared example** and PDF text extraction do not need a Gemini key.
 
 ### Notion import/export (optional)
 
@@ -107,10 +95,11 @@ Required for live tutor chat, PDF/Notion lesson generation, flashcard generation
 NOTION_API_KEY=your_internal_integration_secret
 ```
 
-Create a Notion internal integration with **Read content** and **Insert content** capabilities, add its secret to `.env.local`, and share each page you want to import from or save under with the integration. In the app, paste the page URL or ID:
+Create a Notion internal integration with **Read content** and (for tutor export) **Insert content** capabilities, add its secret to `.env.local`, and share each page you want to import from or save under with the integration. In the IP copilot or tutor, paste the page URL or ID:
 
-- **Import page** reads the page text, generates a study lesson and flashcards, and makes that text available to tutor chat.
-- **Save lesson + cards** creates a new child page under the page you supplied.
+- **IP copilot import** loads the page text as the shared disclosure source for both modes.
+- **Tutor import** generates a study lesson and flashcards and makes that text available to tutor chat.
+- **Save lesson + cards** remains available in the secondary tutor and creates a child page under the page you supplied.
 
 The integration token is used only by server routes and is never sent to the browser. Notion is optional; the tutor's PDF and sample workflows do not require it.
 
@@ -138,8 +127,10 @@ The reminder endpoint requires `Authorization: Bearer <REMIND_CRON_SECRET>`. Con
 
 ## Privacy and limitations
 
-- Do not upload or import confidential, personal, or client material. PDF and Notion text is sent to Google Gemini for processing.
-- The intake demo uses only fictional, built-in text and does not persist its draft or review state.
+- Do not upload or import confidential, personal, client, or patent-pending material. The demo is not approved for confidential case data.
+- PDF text extraction runs locally, but the selected PDF-derived, pasted, or Notion text is sent to Google Gemini when an AI action runs. The UI requires a non-confidential-data confirmation for user-provided sources.
+- The primary IP copilot does not save the selected source, draft, chat, or review state. Optional Supabase flashcard persistence may save generated cards when explicitly enabled.
+- The secondary tutor can process user-provided PDFs or Notion text; those inputs are sent to Google Gemini for processing.
 - AI output can be incomplete or wrong. Verify generated explanations, flashcards, and drafts against their sources.
 - The intake prototype is not legal advice, a novelty search, or an assessment of patentability or infringement.
 - The app is a single-user demo. Protect Gemini and Notion endpoints with authentication, authorization, and rate limits before exposing it publicly.

@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import IntakeWorkspace from "./workspace";
 
 export const metadata: Metadata = {
-  title: "Invention Intake Copilot | Catch-Up Tutor",
+  title: "IP Intake & Technical Brief Copilot",
   description:
-    "A synthetic, evidence-first demonstration of an AI-assisted invention intake workflow.",
+    "An evidence-first AI workflow that turns one fictional invention disclosure into an intake draft and a technical briefing.",
 };
 
 export default function IntakePage() {

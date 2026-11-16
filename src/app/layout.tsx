@@ -14,8 +14,9 @@ const displayFont = Manrope({
 });
 
 export const metadata: Metadata = {
-  title: "Catch-Up Tutor",
-  description: "Study smarter with AI-assisted lessons, flashcards, and document workflows.",
+  title: "IP Intake & Technical Brief Copilot",
+  description:
+    "An evidence-first AI workflow that turns one fictional invention disclosure into an intake draft and a technical briefing.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

@@ -24,9 +24,13 @@ export const sampleDisclosure = {
   ],
 } as const;
 
+export const sampleDisclosureText = sampleDisclosure.sources
+  .map((source) => `[${source.id}] Page ${source.page} — ${source.heading}\n${source.text}`)
+  .join("\n\n");
+
 export type IntakeCitation = {
   sourceId: string;
-  page: number;
+  page?: number;
   heading: string;
   excerpt: string;
 };
